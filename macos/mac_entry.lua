@@ -44,6 +44,28 @@ local function filterPoBVersion(doc)
             if node.elem == "File" and node.attrib.runtime and node.attrib.runtime ~= "macos" then
                 -- Drop Windows-only binaries (.dll, .exe).
                 keep = false
+            elseif node.elem == "File" and node.attrib.part == "runtime" then
+                -- Cross-platform "runtime" file (e.g. lua/dkjson.lua, fonts
+                -- under SimpleGraphic/Fonts/). Upstream marks these
+                -- part="runtime" because they live in runtime/ in the PoB
+                -- Lua repo, but functionally they're regular data files.
+                -- We drop them from the manifest entirely on macOS for two
+                -- reasons:
+                --   1. UpdateCheck.lua flips updateMode to "basic" for ANY
+                --      part="runtime" file, which on macOS would call
+                --      SpawnProcess(runtimePath/Update, ...) — we don't
+                --      ship an Update helper binary, so basic-mode would
+                --      fail forever.
+                --   2. We can't simply re-categorize them as "program"
+                --      because that would route the download URL through
+                --      <repo>/master/src/ instead of <repo>/master/runtime/
+                --      and change the on-disk destination from Resources/
+                --      to Resources/src/.
+                -- They're shipped in the DMG, sit on disk, and get
+                -- refreshed only when a new DMG is released. These files
+                -- are extremely stable upstream (years between changes),
+                -- so this is acceptable.
+                keep = false
             elseif node.elem == "Source" and node.attrib.platform and node.attrib.platform ~= "macos" then
                 -- Re-key Windows-only source URLs to macos so the platform-keyed
                 -- partSources lookup in UpdateCheck.lua resolves. The cross-platform
@@ -94,6 +116,10 @@ local function filterPoBVersion(doc)
         local keep = true
         if type(node) == "table" then
             if node.elem == "File" and node.attrib.runtime and node.attrib.runtime ~= "macos" then
+                keep = false
+            elseif node.elem == "File" and node.attrib.part == "runtime" then
+                -- Drop cross-platform runtime files entirely. See main-state
+                -- filter above for why we don't re-categorize them.
                 keep = false
             elseif node.elem == "Source" and node.attrib.platform and node.attrib.platform ~= "macos" then
                 local copy = { elem = "Source", attrib = {} }
