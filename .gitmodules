@@ -1,0 +1,7 @@
+[submodule "SimpleGraphic"]
+	path = SimpleGraphic
+	url = git@github.com:stevschmid/PathOfBuilding-SimpleGraphic.git
+	branch = macos-port
+[submodule "PathOfBuilding"]
+	path = PathOfBuilding
+	url = https://github.com/PathOfBuildingCommunity/PathOfBuilding.git
