@@ -107,6 +107,36 @@ if (EXISTS "${POB_LUA_TREE}/src/Launch.lua")
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/macos/mac_entry.lua"
         DESTINATION "${POB_RES_DEST}/src"
     )
+
+    # Generate a stripped manifest.xml from upstream's at configure time.
+    # PoB's in-app updater needs this file to:
+    #   (1) know what version is installed (drives the changelog popup),
+    #   (2) know which files to track locally (drives the diff against the
+    #       remote manifest).
+    # We strip Windows-only entries (runtime="win32") so the updater never
+    # tries to download DLLs/exe, and we add branch + platform attributes
+    # to <Version> so Launch.lua doesn't engage dev mode (which would
+    # disable updates entirely). The mac_entry.lua filter strips the same
+    # things at runtime; doing it at install time too just makes the
+    # initial state correct without needing the in-app updater to apply a
+    # round-trip first.
+    if (EXISTS "${POB_LUA_TREE}/manifest.xml")
+        file(READ "${POB_LUA_TREE}/manifest.xml" _pob_manifest)
+        string(REGEX REPLACE "[^\n]*runtime=\"win32\"[^\n]*\n" ""
+            _pob_manifest "${_pob_manifest}")
+        string(REGEX REPLACE
+            "<Version (number=\"[^\"]*\") />"
+            "<Version \\1 branch=\"master\" platform=\"macos\" />"
+            _pob_manifest "${_pob_manifest}")
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/manifest.xml" "${_pob_manifest}")
+        # Re-run configure when upstream's manifest changes (e.g. after a
+        # PathOfBuilding submodule bump) so the generated copy stays in sync.
+        set_property(DIRECTORY APPEND PROPERTY
+            CMAKE_CONFIGURE_DEPENDS "${POB_LUA_TREE}/manifest.xml")
+        install(FILES "${CMAKE_CURRENT_BINARY_DIR}/manifest.xml"
+            DESTINATION "${POB_RES_DEST}/src"
+        )
+    endif()
 else()
     message(WARNING
         "POB_LUA_TREE='${POB_LUA_TREE}' has no src/Launch.lua. "
