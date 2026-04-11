@@ -111,6 +111,21 @@ if (EXISTS "${POB_LUA_TREE}/src/Launch.lua")
         DESTINATION "${POB_RES_DEST}"
         PATTERN "*.cfg" EXCLUDE
     )
+
+    # Top-level PoB data files (changelog/help/LICENSE) live at the repo
+    # root in the git tree but PoB's installed-mode Lua code reads them
+    # relative to scriptPath (= src/) — see Modules/Main.lua where
+    # `launch.devMode and "../changelog.txt" or "changelog.txt"` picks the
+    # dev-vs-installed path. The Windows installer moves these files into
+    # src/ as a packaging step; we mirror that here. Without this, PoB's
+    # in-app updater reports "Update available" on first launch because
+    # UpdateCheck.lua sees them as missing and triggers a download.
+    install(FILES
+        "${POB_LUA_TREE}/changelog.txt"
+        "${POB_LUA_TREE}/help.txt"
+        "${POB_LUA_TREE}/LICENSE.md"
+        DESTINATION "${POB_RES_DEST}/src"
+    )
     # Bootstrap entry that overlays src/mac_entry.lua on top of the upstream
     # Lua tree. The launcher uses this as the bundle entry script instead of
     # Launch.lua so we can install the in-app updater's manifest filter
