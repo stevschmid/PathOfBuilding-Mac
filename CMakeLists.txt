@@ -74,7 +74,7 @@ set_target_properties(PathOfBuilding PROPERTIES
     OUTPUT_NAME "Path of Building"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist.in"
     MACOSX_BUNDLE_BUNDLE_NAME "Path of Building"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.pathofbuildingcommunity.PathOfBuilding"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "ch.spidy.PathOfBuildingMac"
     MACOSX_BUNDLE_BUNDLE_VERSION "2.63.0"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "2.63.0"
     MACOSX_BUNDLE_ICON_FILE "AppIcon"
