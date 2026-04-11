@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Hardened-runtime entitlements for Path of Building on macOS.
+
+	  LuaJIT generates machine code at runtime via MAP_JIT pages. Under the
+	  hardened runtime this is blocked unless the process carries the two
+	  JIT entitlements below. Without them the JIT falls back to the
+	  interpreter and the UI develops ~1.5s click latency on the passive tree.
+	-->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<!--
+	  Library validation is disabled because macos/launcher.c explicitly
+	  dlopen()s libEGL.dylib and libGLESv2.dylib (ANGLE) ahead of GLFW
+	  creating the GL context. Under ad-hoc signing this trips the "different
+	  Team IDs" check and aborts the process at startup; under Developer ID
+	  signing everything has the same Team ID so the check would pass, but
+	  we keep this entitlement so the same plist works for local ad-hoc
+	  testing and notarized release builds. Notarization accepts this
+	  entitlement for apps that load their own bundled dylibs.
+	-->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>
