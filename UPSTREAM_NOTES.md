@@ -297,3 +297,83 @@ We can't modify PoB Lua upstream, and we don't maintain a fork of the Lua repo. 
 ### Upstream plan
 
 Single PR against `PathOfBuildingCommunity/PathOfBuilding`. One-line change to `src/UpdateCheck.lua`. Safe on all platforms. Fixes a latent POSIX bug that was never exercised until macOS started shipping a bundle with a manifest. Zero SimpleGraphic changes required.
+
+## SimpleGraphic writes its own config files to basePath instead of userPath
+
+**Files:**
+- `ui_main.cpp` (~lines 243, 491) — `SimpleGraphic.cfg` + `SimpleGraphicAuto.cfg`
+- `engine/render/r_main.cpp` (~line 1085) — `imgui.ini` (Dear ImGui's window-state file)
+
+**Bug:** three runtime-written config files are specified as bare relative paths:
+
+```cpp
+// ui_main.cpp:243 (load) and :491 (save)
+core->config->LoadConfig("SimpleGraphic/SimpleGraphic.cfg");
+core->config->LoadConfig("SimpleGraphic/SimpleGraphicAuto.cfg");
+core->config->SaveConfig("SimpleGraphic/SimpleGraphic.cfg");
+```
+
+Dear ImGui similarly defaults `io.IniFilename = "imgui.ini"` (bare leaf name). All four paths are resolved against `cwd` at the time of `fopen`. And `ui_main_c::PCall` flips `cwd` between `scriptWorkDir` (during Lua execution) and `basePath` (via `sys->SetWorkDir()` with no arg, which `chdir`s back to `basePath`) between every Lua call. So at the moment SG's config save or ImGui's deferred autosave runs — both trigger from the main render loop, *outside* `PCall` — `cwd == basePath`. The files land at:
+
+- `<basePath>/SimpleGraphic/SimpleGraphic.cfg`
+- `<basePath>/SimpleGraphic/SimpleGraphicAuto.cfg`
+- `<basePath>/imgui.ini`
+
+**On Windows this is fine** because the PoB install dir is user-writable and there's no sealed manifest — rewriting files next to the binary works the way the code quietly assumes.
+
+**On macOS this breaks in two ways:**
+
+1. A code-signed `.app` bundle carries a sealed resource manifest (`Contents/_CodeSignature/CodeResources`). Any write inside `Contents/` invalidates it — `codesign --verify --deep --strict` fails afterward and Gatekeeper rejects the bundle if it's re-quarantined.
+2. `/Applications/Foo.app` is not user-writable without admin. Once the DMG is installed the config writes fail with `EACCES` and PoB silently loses its window state, recent-build list, and ImGui state.
+
+The same reasoning applies to any sandboxed Linux distribution format (flatpak, snap with classic confinement) and to future Windows AppContainer bundles.
+
+**Root cause framing:** the issue isn't really "the paths are wrong", it's that `SetWorkDir()`'s `chdir`-flipping design makes cwd an unreliable anchor for any I/O site that wants "user-writable state". The safe rule for new code is **always resolve mutable paths against `sys->userPath`, never rely on cwd**. Existing code that predates that rule (these three call sites) should be migrated.
+
+**Fix (upstream, ideal):** use `sys->userPath` as the base for mutable state on any platform where `FindUserPath()` returns non-empty (currently Linux and macOS):
+
+```cpp
+// ui_main.cpp sketch
+std::filesystem::path sgCfgBase =
+#if defined(__APPLE__) || defined(__linux__)
+    sys->userPath / "SimpleGraphic";
+#else
+    sys->basePath;  // Windows: unchanged, preserves existing installs
+#endif
+std::filesystem::create_directories(sgCfgBase);
+core->config->LoadConfig(sgCfgBase / "SimpleGraphic.cfg");
+core->config->LoadConfig(sgCfgBase / "SimpleGraphicAuto.cfg");
+// ... and the matching SaveConfig on shutdown
+```
+
+And after `ImGui::CreateContext()` in `r_main.cpp`:
+
+```cpp
+static std::string s_imguiIniPath;  // must outlive the ImGui context
+#if defined(__APPLE__) || defined(__linux__)
+s_imguiIniPath = (sys->userPath / "imgui.ini").string();
+ImGui::GetIO().IniFilename = s_imguiIniPath.c_str();
+#endif
+```
+
+`sys->userPath` is already computed at construction (`sys_main.cpp:677` via `FindUserPath()`), so no new discovery logic is required.
+
+**Fix (what we actually shipped in the macOS wrapper):** a `POB_MAC_USER_DIR` env var set by our launcher that both call sites read, falling back to `basePath` when unset. Chosen over the `sys->userPath` variant because:
+
+1. It's a *minimal* diff (~10 lines across the two files, no headers touched). Upstream merges stay clean.
+2. It lets the wrapper pick the subdir name (`PathOfBuildingMac/` in our case) without baking a name into upstream code that might not match whatever naming upstream prefers.
+3. It follows the existing env-var pattern already in SG (`SG_BASE_PATH`).
+
+The env-var approach is what we'd suggest sending first as a conservative patch. The `sys->userPath` rewrite is the cleaner long-term fix if upstream wants to pick a subdir name and commit to it.
+
+**Side observation — `SetWorkDir()` cwd flipping is a latent footgun.** The pattern in `ui_main_c::PCall`:
+
+```cpp
+sys->SetWorkDir(scriptWorkDir);  // flip cwd for Lua
+lua_pcall(L, ...);
+sys->SetWorkDir();                // flip back to basePath
+```
+
+means any future SG-side file I/O written with a relative path will implicitly land at `basePath` — not at `cwd` as a reader might assume, and not at the script's working dir either. Adding a one-line comment near `SetWorkDir(std::filesystem::path const&)` in `sys_main.cpp:402` documenting the invariant (`"Default cwd after any SetWorkDir()-with-no-arg is basePath; relative paths used outside of Lua callbacks resolve there"`) would help future contributors avoid repeating this pattern. Tiny doc-only change, no behavior impact.
+
+**Scope:** both parts are genuinely upstream-worthy. The config-path fix is one of the two things blocking code-signed macOS distribution (the other being our App Support relocation for the `src/` tree, which is wrapper-local and not upstream material). The `SetWorkDir` doc-comment is a freebie that could ride along in the same PR.

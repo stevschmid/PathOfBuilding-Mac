@@ -40,8 +40,8 @@
 --   singular l_MakeDir works fine once dirStr has the right prefix,
 --   because each iteration's parent is the previous iteration's result.
 --   The fix is a one-line change and makes no assumptions about
---   SimpleGraphic's MakeDir implementation. See SimpleGraphic's NOTES.md
---   for the upstreamable bug report.
+--   SimpleGraphic's MakeDir implementation. See UPSTREAM_NOTES.md at
+--   the wrapper repo root for the upstreamable bug report.
 --
 -- Both patches need two installation points because UpdateCheck runs in
 -- two places:
