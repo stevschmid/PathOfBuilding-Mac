@@ -1,32 +1,58 @@
 -- macOS bundle entry point.
 --
 -- The bundle's launcher binary points the SimpleGraphic Lua engine at this
--- file instead of Launch.lua so we can install a manifest filter on the
--- in-app updater BEFORE upstream code starts running.
+-- file instead of Launch.lua so we can apply two patches to the in-app
+-- updater BEFORE any upstream code runs.
 --
--- Why this exists:
+-- Patch 1: manifest filter
 --   PoB's updater (UpdateCheck.lua) reads a manifest.xml that lists every
---   shipped file with platform metadata. Upstream marks Windows binaries
---   with runtime="win32" but does NOT actually filter on that attribute
---   anywhere in the Lua code. Without intervention, the updater would
---   try to download libEGL.dll, lcurl.dll, Path of Building.exe, etc.
---   from raw.githubusercontent.com on every check and crash on the runtime
---   source URL lookup (which is keyed by platform="win32").
+--   shipped file. Upstream marks Windows binaries with runtime="win32" but
+--   does NOT actually filter on that attribute anywhere in the Lua code.
+--   Without intervention, the updater would try to download libEGL.dll,
+--   lcurl.dll, Path of Building.exe, etc. from raw.githubusercontent.com
+--   and crash on the runtime source URL lookup. We monkey-patch
+--   xml.LoadXMLFile and xml.ParseXML to strip win32-only file entries,
+--   drop cross-platform part="runtime" files (which would otherwise
+--   trigger basic-mode updates that require an external Update helper
+--   binary we don't ship), and re-key Windows-only source URLs to
+--   platform="macos".
 --
--- Strategy:
---   We monkey-patch xml.LoadXMLFile and xml.ParseXML to strip win32-only
---   file entries and re-key the runtime source URL from platform="win32"
---   to platform="macos" so the cross-platform runtime/* files (Lua modules,
---   fonts) still update from upstream's raw URL but the Windows-only
---   binaries become invisible to the updater entirely.
+-- Patch 2: UpdateCheck.lua MakeDir loop fix for POSIX absolute paths
+--   UpdateCheck.lua creates destination directories before downloading
+--   with a per-segment loop:
+--       local dirStr = ""
+--       for dir in data.fullPath:gmatch("([^/]+/)") do
+--           dirStr = dirStr .. dir
+--           MakeDir(dirStr)
+--       end
+--   On Windows this works because fullPath starts with a drive letter
+--   ("C:/..."), gmatch captures it, and the accumulated dirStr stays
+--   absolute. On POSIX absolute paths ("/private/tmp/..."), the leading
+--   "/" is skipped by Lua's [^/]+ pattern, the accumulated dirStr ends
+--   up being RELATIVE, MakeDir resolves it against cwd, and the loop
+--   creates a phantom directory tree under cwd while the real absolute
+--   destination is never created. UpdateApply.lua then spins forever
+--   at 100% CPU in its io.open retry loop.
 --
--- Two installation points are needed because UpdateCheck runs in two places:
---   1. The first-run path (Launch.lua line ~37) calls LoadModule("UpdateCheck")
---      which reuses the main Lua state. Patching xml here covers this case.
---   2. The regular Ctrl+U / 12-hour path (Launch.lua launch:CheckForUpdate)
---      uses LaunchSubScript with a fresh Lua state, so we wrap the global
---      LaunchSubScript and prepend the same patches into the sub-script's
---      source text before it's compiled in the sub-state.
+--   We gsub the `local dirStr = ""` initialization into a conditional
+--   form that seeds dirStr with "/" when fullPath is POSIX-absolute.
+--   The rest of the loop is unchanged — per-segment MakeDir with the
+--   singular l_MakeDir works fine once dirStr has the right prefix,
+--   because each iteration's parent is the previous iteration's result.
+--   The fix is a one-line change and makes no assumptions about
+--   SimpleGraphic's MakeDir implementation. See SimpleGraphic's NOTES.md
+--   for the upstreamable bug report.
+--
+-- Both patches need two installation points because UpdateCheck runs in
+-- two places:
+--   a. The first-run path (Launch.lua line ~37) calls LoadModule("UpdateCheck")
+--      in the main Lua state. We wrap LoadModule globally, read the file
+--      ourselves, apply the source patch, and compile via load().
+--   b. The regular CheckForUpdate path (Launch.lua:85 background check on
+--      startup + 12-hour timer + Ctrl+U) uses LaunchSubScript with a
+--      fresh Lua state. We wrap LaunchSubScript, gsub the broken loop,
+--      and prepend an xml-filter preamble into the sub-script's source
+--      text before it's compiled in the sub-state.
 --
 -- This file is installed at src/mac_entry.lua but is NOT listed in any
 -- manifest (local or remote). The upstream updater therefore never tracks,
@@ -86,6 +112,43 @@ local function filterPoBVersion(doc)
     return doc
 end
 
+-- Fix UpdateCheck.lua's per-segment MakeDir loop on POSIX absolute paths.
+--
+-- Upstream code:
+--     local dirStr = ""
+--     for dir in data.fullPath:gmatch("([^/]+/)") do
+--         dirStr = dirStr .. dir
+--         MakeDir(dirStr)
+--     end
+--
+-- On Windows this works because fullPath starts with a drive letter
+-- ("C:/..."), which gmatch captures intact, so the accumulated dirStr
+-- stays absolute throughout. On POSIX absolute paths ("/private/tmp/..."),
+-- Lua's [^/]+ pattern requires one or more non-"/" chars, so the leading
+-- "/" is SKIPPED and gmatch starts yielding from "private/" onward. The
+-- accumulated dirStr is then RELATIVE ("private/tmp/...") and MakeDir
+-- resolves it against cwd, creating a phantom directory tree under cwd
+-- while the real absolute destination is never created. UpdateApply.lua
+-- then spins forever in its io.open retry loop.
+--
+-- The minimal fix is to seed dirStr with "/" when fullPath starts with
+-- "/". The per-segment loop is otherwise fine — it's the intentional
+-- workaround for MakeDir being a single-directory primitive and it works
+-- correctly on absolute paths once dirStr has the right prefix.
+--
+-- We apply the fix with a gsub that replaces the `local dirStr = ""`
+-- initialization with a conditional form. The gsub is targeted enough
+-- that it won't match anything else in UpdateCheck.lua, and a no-op if
+-- upstream ever renames or restructures the loop.
+local function patchUpdateCheckSource(text)
+    if type(text) ~= "string" then return text end
+    local patched = text:gsub(
+        'local dirStr = ""',
+        'local dirStr = data.fullPath:sub(1,1) == "/" and "/" or ""'
+    )
+    return patched
+end
+
 -- Patch xml in the main Lua state. Used by the first-run install path
 -- (Launch.lua line ~37: LoadModule("UpdateCheck") runs in the main state).
 do
@@ -97,6 +160,40 @@ do
     local origParseXML = xml.ParseXML
     xml.ParseXML = function(...)
         return filterPoBVersion(origParseXML(...))
+    end
+end
+
+-- Wrap LoadModule so the first-run path ("first.run" marker at startup
+-- triggers LoadModule("UpdateCheck") in Launch.lua:37) also gets the
+-- MakeDir loop fix. Without this, fresh installs would hang on the first
+-- update apply the same way the regular CheckForUpdate path would. We
+-- read the file ourselves, gsub the broken loop, and compile via load()
+-- so the patched text runs in place of the original. Everything else
+-- delegates to the upstream LoadModule to avoid breaking other callers.
+do
+    local origLoadModule = LoadModule
+    LoadModule = function(name, ...)
+        if name == "UpdateCheck" then
+            local fileName = name
+            if not fileName:find("%.") then
+                fileName = fileName .. ".lua"
+            end
+            local f = io.open(fileName, "r")
+            if f then
+                local text = f:read("*a")
+                f:close()
+                text = patchUpdateCheckSource(text)
+                -- load() does not skip shebangs, so strip the leading "#@" line
+                -- that upstream UpdateCheck.lua starts with.
+                text = text:gsub("^#[^\n]*\n", "")
+                local chunk, err = load(text, "@" .. fileName)
+                if not chunk then
+                    error("mac_entry.lua: load(UpdateCheck) failed: " .. tostring(err))
+                end
+                return chunk(...)
+            end
+        end
+        return origLoadModule(name, ...)
     end
 end
 
@@ -151,6 +248,8 @@ xml.ParseXML = function(...) return filterPoBVersion(origParseXML(...)) end
             -- preamble in front of it, so the # would no longer be at the
             -- start. Strip the leading shebang-style line first.
             scriptText = scriptText:gsub("^#[^\n]*\n", "")
+            -- Fix the broken per-segment MakeDir loop. See file header.
+            scriptText = patchUpdateCheckSource(scriptText)
             scriptText = subPreamble .. scriptText
         end
         return origLaunchSubScript(scriptText, funcList, subList, ...)
