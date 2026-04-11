@@ -30,6 +30,10 @@ endif()
 
 project(PathOfBuilding-Mac C CXX)
 
+# launcher.cpp leans on <filesystem> and <optional>.
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 if (NOT APPLE)
     message(FATAL_ERROR
         "PathOfBuilding-Mac is the macOS distribution wrapper for PoB. "
@@ -60,23 +64,31 @@ set(POB_LUA_TREE "${CMAKE_CURRENT_SOURCE_DIR}/PathOfBuilding"
 add_subdirectory(SimpleGraphic)
 
 # ----- Bundle target -----
+# Bump in lockstep with the pinned PathOfBuilding submodule. Drives both
+# Info.plist and the App Support refresh marker.
+set(POB_BUNDLE_VERSION "2.63.0")
+
 set(POB_APPICON "${CMAKE_CURRENT_SOURCE_DIR}/macos/AppIcon.icns")
 set_source_files_properties(${POB_APPICON} PROPERTIES
     MACOSX_PACKAGE_LOCATION "Resources")
 
 add_executable(PathOfBuilding MACOSX_BUNDLE
-    macos/launcher.c
+    macos/launcher.cpp
     ${POB_APPICON}
 )
 target_link_libraries(PathOfBuilding PRIVATE ${CMAKE_DL_LIBS})
+
+target_compile_definitions(PathOfBuilding PRIVATE
+    POB_BUNDLE_VERSION_STRING="${POB_BUNDLE_VERSION}"
+)
 
 set_target_properties(PathOfBuilding PROPERTIES
     OUTPUT_NAME "Path of Building"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist.in"
     MACOSX_BUNDLE_BUNDLE_NAME "Path of Building"
     MACOSX_BUNDLE_GUI_IDENTIFIER "ch.spidy.PathOfBuildingMac"
-    MACOSX_BUNDLE_BUNDLE_VERSION "2.63.0"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "2.63.0"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${POB_BUNDLE_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${POB_BUNDLE_VERSION}"
     MACOSX_BUNDLE_ICON_FILE "AppIcon"
 )
 
