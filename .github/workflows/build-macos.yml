@@ -21,7 +21,7 @@ permissions:
 jobs:
   build:
     name: Build and ad-hoc sign
-    runs-on: macos-14   # Apple Silicon — our only target
+    runs-on: macos-15   # Apple Silicon + Xcode 16 — our only target
     timeout-minutes: 90 # first run will be slow (full vcpkg build)
 
     env:

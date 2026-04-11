@@ -1,13 +1,16 @@
 cmake_minimum_required(VERSION 3.15)
 
 # ----- vcpkg toolchain (must come before project()) -----
-# The SimpleGraphic submodule vendors vcpkg + an Apple overlay triplet
-# (arm64-osx-pob) that builds ANGLE as a shared library so GLFW can dlopen
-# libEGL.dylib at runtime. We auto-wire the toolchain here so cmake -B build
-# Just Works without the user having to pass -DCMAKE_TOOLCHAIN_FILE.
+# The SimpleGraphic submodule vendors vcpkg. Our overlay triplet
+# (arm64-osx-pob) lives in this wrapper's own vcpkg-triplets/ directory
+# and controls wrapper-specific release policy: ANGLE is forced shared so
+# GLFW can dlopen libEGL.dylib, and VCPKG_OSX_DEPLOYMENT_TARGET is pinned
+# to 11.0 to match the wrapper's CMAKE_OSX_DEPLOYMENT_TARGET. We auto-wire
+# the toolchain here so `cmake -B build` Just Works without the user
+# having to pass -DCMAKE_TOOLCHAIN_FILE.
 if (APPLE AND NOT DEFINED CACHE{VCPKG_TARGET_TRIPLET})
     list(APPEND VCPKG_OVERLAY_TRIPLETS
-        "${CMAKE_CURRENT_SOURCE_DIR}/SimpleGraphic/vcpkg-triplets")
+        "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg-triplets")
     set(VCPKG_OVERLAY_TRIPLETS "${VCPKG_OVERLAY_TRIPLETS}" CACHE STRING "")
     set(VCPKG_TARGET_TRIPLET "arm64-osx-pob" CACHE STRING "")
     set(VCPKG_HOST_TRIPLET "arm64-osx-pob" CACHE STRING "")
@@ -26,6 +29,16 @@ if (NOT DEFINED VCPKG_MANIFEST_DIR)
     set(VCPKG_MANIFEST_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/SimpleGraphic"
         CACHE PATH "")
+endif()
+
+# Minimum macOS version the shipped binary will load on. 11.0 (Big Sur) is
+# the first macOS to support Apple Silicon, and this wrapper is arm64-only,
+# so lower targets are meaningless. Must be set before the first project()
+# call because CMake reads it during Apple toolchain detection. Overridable
+# via -DCMAKE_OSX_DEPLOYMENT_TARGET at configure time.
+if (NOT DEFINED CACHE{CMAKE_OSX_DEPLOYMENT_TARGET})
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING
+        "Minimum macOS version the .app bundle runs on")
 endif()
 
 project(PathOfBuilding-Mac C CXX)

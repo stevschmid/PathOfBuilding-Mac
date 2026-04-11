@@ -377,3 +377,19 @@ sys->SetWorkDir();                // flip back to basePath
 means any future SG-side file I/O written with a relative path will implicitly land at `basePath` — not at `cwd` as a reader might assume, and not at the script's working dir either. Adding a one-line comment near `SetWorkDir(std::filesystem::path const&)` in `sys_main.cpp:402` documenting the invariant (`"Default cwd after any SetWorkDir()-with-no-arg is basePath; relative paths used outside of Lua callbacks resolve there"`) would help future contributors avoid repeating this pattern. Tiny doc-only change, no behavior impact.
 
 **Scope:** both parts are genuinely upstream-worthy. The config-path fix is one of the two things blocking code-signed macOS distribution (the other being our App Support relocation for the `src/` tree, which is wrapper-local and not upstream material). The `SetWorkDir` doc-comment is a freebie that could ride along in the same PR.
+
+## libs/luautf8: C23 label-followed-by-declaration rejected by older clang
+
+**File:** `libs/luautf8` submodule pin in `SimpleGraphic/.gitmodules`
+
+**Bug:** upstream `luautf8`'s `lutf8lib.c` at our pinned commit (`bdd3d7f`, 2023-10-05, "Add 'grapheme_indices' function") has a `build_string:` label followed immediately by `luaL_Buffer buff;` inside `Lutf8_normalize_nfc`. In C89 through C17, a label must be followed by a *statement*, not a *declaration* — so strict parsers reject it as `error: expected expression`. This was only standardized in **C23**.
+
+Newer Apple clang (Xcode 16.3+, clang ~17+) accepts it as a C23 extension with `-Wc23-extensions` warning. Older Apple clang (Xcode 15 series, shipping on GitHub's `macos-14` runners) rejects it outright as an unrecoverable parse error. This caused our first CI run on `macos-14` to fail during the `lua-utf8` build step, even though local builds on Xcode 16 succeeded with just a warning.
+
+**Fix:** **upstream already fixed this.** starwing/luautf8 PR #49 flagged the same issue in January 2024; the PR was closed because the maintainer fixed it directly on master (added `build_string: ;` — a null statement to satisfy any C standard's label-must-be-statement rule). As of `luautf8` master (~36 commits ahead of our pin as of 2026-04), the problem is gone.
+
+**Recommended action for upstream SimpleGraphic:** bump the `libs/luautf8` submodule pointer to a recent master commit. Beyond fixing the parse error, the 36 commits include Lua 5.5 compat, a new `widthlimit` API, fixes to UTF-8 offset handling, and several bug fixes. Minor risk: there's one commit marked `feat!` (`feat!: add widthlimit API and modernize width functions (v0.2.0)`) — worth a read-through before bumping in case the breaking change touches functions PoB actually calls.
+
+**What we did in this wrapper instead:** switched our CI runner from `macos-14` to `macos-15`, which ships Xcode 16 and accepts the current pin's code as a C23 extension with just a warning. This sidesteps the issue without touching the submodule. The upstream bump remains the more robust fix for anyone building SG with older Apple clang or in a stricter C standard mode, so it's worth recording here even though it isn't blocking us.
+
+**Scope:** one-line submodule pointer change in `PathOfBuilding-SimpleGraphic/.gitmodules` + a `git submodule update`. No code changes to SG itself. Zero risk to Windows builds. Low-priority for upstream since Windows MSVC doesn't trip on this and Linux GCC trips on it only in strict modes.
