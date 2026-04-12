@@ -23,12 +23,14 @@ jobs:
             bundle_name: "Path of Building"
             bundle_id: ch.spidy.PathOfBuildingMac
             app_support_dir: PathOfBuildingMac
+            dmg_name: PathOfBuilding-Mac
           - name: Path of Building - PoE2
             lua_tree: PathOfBuilding-PoE2
             version: "0.15.0"
             bundle_name: "Path of Building - PoE2"
             bundle_id: ch.spidy.PathOfBuildingMacPoE2
             app_support_dir: PathOfBuildingMacPoE2
+            dmg_name: PathOfBuilding-Mac-PoE2
 
     steps:
       - name: Checkout (with submodules)
@@ -65,11 +67,11 @@ jobs:
         run: codesign --verify --deep --strict --verbose=2 "${{ runner.temp }}/stage/${{ matrix.bundle_name }}.app"
 
       - name: Package DMG
-        run: macos/make-dmg.sh "${{ runner.temp }}/stage/${{ matrix.bundle_name }}.app" "${{ runner.temp }}/${{ matrix.bundle_name }}.dmg"
+        run: macos/make-dmg.sh "${{ runner.temp }}/stage/${{ matrix.bundle_name }}.app" "${{ runner.temp }}/${{ matrix.dmg_name }}.dmg"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.bundle_name }}-${{ github.sha }}
-          path: ${{ runner.temp }}/${{ matrix.bundle_name }}.dmg
+          path: ${{ runner.temp }}/${{ matrix.dmg_name }}.dmg
           if-no-files-found: error
