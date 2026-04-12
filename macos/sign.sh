@@ -59,7 +59,7 @@ echo "==> [1/2] Signing dylibs"
 find "$APP_PATH/Contents/MacOS" -type f -name '*.dylib' -print0 |
 while IFS= read -r -d '' dylib; do
     echo "    $(basename "$dylib")"
-    codesign --force --options runtime --timestamp=none \
+    codesign --force --options runtime --timestamp \
         --sign "$IDENTITY" "$dylib"
 done
 
@@ -69,7 +69,7 @@ done
 # main exe's signature and are what gets checked at exec time.
 echo
 echo "==> [2/2] Signing bundle with entitlements"
-codesign --force --options runtime --timestamp=none \
+codesign --force --options runtime --timestamp \
     --entitlements "$ENTITLEMENTS" \
     --sign "$IDENTITY" "$APP_PATH"
 
