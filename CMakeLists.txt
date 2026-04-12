@@ -54,21 +54,30 @@ if (NOT APPLE)
         "submodule directly, not this top-level project.")
 endif()
 
-# ----- Bundle layout -----
-# These override the engine's defaults (which are flat for standalone use)
-# so SimpleGraphic's install rules deposit dylibs and helper modules directly
-# into the .app bundle. The engine's CMakeLists reads POB_BIN_DEST/POB_RES_DEST
-# from the cache before its own conditional defaults kick in.
-set(POB_BIN_DEST "Path of Building.app/Contents/MacOS"
-    CACHE STRING "Where SimpleGraphic dylibs land inside the bundle" FORCE)
-set(POB_RES_DEST "Path of Building.app/Contents/Resources"
-    CACHE STRING "Where bundled resources land inside the bundle" FORCE)
-
-# Path to the PoB Lua tree that gets bundled into Contents/Resources.
-# Defaults to the PathOfBuilding submodule but can be overridden for local
-# dev against a sibling checkout.
+# ----- Bundle configuration -----
+# These variables control which PoB variant is built. Defaults produce the
+# PoE1 "Path of Building.app". Override via -D flags on the cmake invocation
+# to build the PoE2 variant from the same CMakeLists:
+#
+#   cmake -B build-poe2 \
+#       -DPOB_LUA_TREE=PathOfBuilding-PoE2 \
+#       -DPOB_BUNDLE_VERSION=0.15.0 \
+#       -DPOB_BUNDLE_NAME="Path of Building - PoE2" \
+#       -DPOB_BUNDLE_ID=ch.spidy.PathOfBuildingMacPoE2 \
+#       -DPOB_APP_SUPPORT_DIR=PathOfBuildingMacPoE2
+set(POB_BUNDLE_NAME "Path of Building"
+    CACHE STRING "Display name and .app filename for the bundle")
+set(POB_BUNDLE_ID "ch.spidy.PathOfBuildingMac"
+    CACHE STRING "CFBundleIdentifier for the bundle")
+set(POB_APP_SUPPORT_DIR "PathOfBuildingMac"
+    CACHE STRING "Subdirectory name under ~/Library/Application Support")
 set(POB_LUA_TREE "${CMAKE_CURRENT_SOURCE_DIR}/PathOfBuilding"
-    CACHE PATH "Path to the PathOfBuilding main repo (Lua tree bundled into the .app)")
+    CACHE PATH "Path to the PathOfBuilding Lua tree to bundle")
+
+set(POB_BIN_DEST "${POB_BUNDLE_NAME}.app/Contents/MacOS"
+    CACHE STRING "Where SimpleGraphic dylibs land inside the bundle" FORCE)
+set(POB_RES_DEST "${POB_BUNDLE_NAME}.app/Contents/Resources"
+    CACHE STRING "Where bundled resources land inside the bundle" FORCE)
 
 # ----- Build the engine -----
 # SimpleGraphic produces libSimpleGraphic.dylib + lcurl/lzip/lua-utf8/socket
@@ -77,9 +86,8 @@ set(POB_LUA_TREE "${CMAKE_CURRENT_SOURCE_DIR}/PathOfBuilding"
 add_subdirectory(SimpleGraphic)
 
 # ----- Bundle target -----
-# Bump in lockstep with the pinned PathOfBuilding submodule. Drives both
-# Info.plist and the App Support refresh marker.
-set(POB_BUNDLE_VERSION "2.63.0")
+set(POB_BUNDLE_VERSION "2.63.0"
+    CACHE STRING "PoB version — drives Info.plist and the App Support refresh marker")
 
 set(POB_APPICON "${CMAKE_CURRENT_SOURCE_DIR}/macos/AppIcon.icns")
 set_source_files_properties(${POB_APPICON} PROPERTIES
@@ -93,13 +101,14 @@ target_link_libraries(PathOfBuilding PRIVATE ${CMAKE_DL_LIBS})
 
 target_compile_definitions(PathOfBuilding PRIVATE
     POB_BUNDLE_VERSION_STRING="${POB_BUNDLE_VERSION}"
+    POB_APP_SUPPORT_DIR="${POB_APP_SUPPORT_DIR}"
 )
 
 set_target_properties(PathOfBuilding PROPERTIES
-    OUTPUT_NAME "Path of Building"
+    OUTPUT_NAME "${POB_BUNDLE_NAME}"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/macos/Info.plist.in"
-    MACOSX_BUNDLE_BUNDLE_NAME "Path of Building"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "ch.spidy.PathOfBuildingMac"
+    MACOSX_BUNDLE_BUNDLE_NAME "${POB_BUNDLE_NAME}"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${POB_BUNDLE_ID}"
     MACOSX_BUNDLE_BUNDLE_VERSION "${POB_BUNDLE_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${POB_BUNDLE_VERSION}"
     MACOSX_BUNDLE_ICON_FILE "AppIcon"

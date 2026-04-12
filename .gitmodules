@@ -6,3 +6,6 @@
 	path = PathOfBuilding
 	url = https://github.com/PathOfBuildingCommunity/PathOfBuilding.git
 	branch = master
+[submodule "PathOfBuilding-PoE2"]
+	path = PathOfBuilding-PoE2
+	url = https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2.git

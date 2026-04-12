@@ -393,3 +393,44 @@ Newer Apple clang (Xcode 16.3+, clang ~17+) accepts it as a C23 extension with `
 **What we did in this wrapper instead:** switched our CI runner from `macos-14` to `macos-15`, which ships Xcode 16 and accepts the current pin's code as a C23 extension with just a warning. This sidesteps the issue without touching the submodule. The upstream bump remains the more robust fix for anyone building SG with older Apple clang or in a stricter C standard mode, so it's worth recording here even though it isn't blocking us.
 
 **Scope:** one-line submodule pointer change in `PathOfBuilding-SimpleGraphic/.gitmodules` + a `git submodule update`. No code changes to SG itself. Zero risk to Windows builds. Low-priority for upstream since Windows MSVC doesn't trip on this and Linux GCC trips on it only in strict modes.
+
+## r_texture.cpp: TranscodeTexture assertions use advanced pointer instead of start pointer
+
+**File:** `engine/render/r_texture.cpp` (~line 545–548 in the `TranscodeTexture` function)
+
+**Bug:** the end-of-level assertions that verify the transcoder consumed exactly the right amount of source/destination data compute their expected endpoints from the *already-advanced* walking pointers instead of the saved start positions:
+
+```cpp
+// srcData and dstData have been advanced through the block-processing loops
+const auto* srcEnd = srcData + src.size(srcLevel);   // WRONG base
+const auto* dstEnd = dstData + dst.size(dstLevel);   // WRONG base
+assert(srcData == srcEnd);  // equivalent to: assert(src.size(srcLevel) == 0)
+assert(dstData == dstEnd);  // equivalent to: assert(dst.size(dstLevel) == 0)
+```
+
+Both assertions are logically equivalent to `assert(size == 0)`, which fails for any non-empty mip level. The transcoding logic itself is correct — the bug is purely in the validation check.
+
+**Why it was never caught:**
+
+1. **Windows:** BC7 (`GL_EXT_texture_compression_bptc`) is universally supported via ANGLE's Direct3D backend, so `texBC7 = true` and `TranscodeTexture` never runs. The function is dead code on Windows.
+2. **macOS with PoE1:** PoE1's tree assets are all PNGs — no BC7 DDS files exist. `TranscodeTexture` has no inputs to process.
+3. **Release builds:** `assert()` expands to nothing (`NDEBUG` is defined). The assertions are compiled out entirely.
+4. **macOS with PoE2 in Debug:** first combination where all three conditions align — ANGLE's Metal backend doesn't expose `GL_EXT_texture_compression_bptc`, PoE2 ships BC7-compressed DDS texture arrays (`.dds.zst` files in `TreeData/`), and assertions are active. The app crashes immediately during "Loading passive tree assets..." with `Assertion failed: (srcData == srcEnd)`.
+
+**Fix:** save the start pointers before the block-processing loops and assert against `start + size`:
+
+```cpp
+const auto* srcData = (const uint8_t*)src.data(layer, 0, srcLevel);
+const auto* srcDataStart = srcData;
+auto* dstData = (uint8_t*)dst.data(layer, 0, dstLevel);
+auto* dstDataStart = dstData;
+
+// ... block processing loops advance srcData and dstData ...
+
+assert(srcData == srcDataStart + src.size(srcLevel));
+assert(dstData == dstDataStart + dst.size(dstLevel));
+(void)srcDataStart;  // suppress unused-variable warning in Release
+(void)dstDataStart;
+```
+
+**Scope:** 4 lines changed in one function. The transcoding output is byte-identical before and after — only the debug assertions are corrected. Zero risk to Release builds (assertions compile out). Zero risk to Windows (function is never called). Fixes Debug-mode crashes on any platform where BC7 isn't natively supported and BC7 DDS textures are present (currently: macOS + PoE2 tree data).

@@ -12,7 +12,7 @@ _deps
 CMakeUserPresets.json
 
 # Out-of-source build directory
-build/
+build*/
 
 # macOS Finder metadata
 .DS_Store

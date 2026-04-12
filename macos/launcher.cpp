@@ -57,15 +57,16 @@
 #ifndef POB_BUNDLE_VERSION_STRING
 #error "POB_BUNDLE_VERSION_STRING must be defined at compile time (set by CMake)"
 #endif
+#ifndef POB_APP_SUPPORT_DIR
+#error "POB_APP_SUPPORT_DIR must be defined at compile time (set by CMake)"
+#endif
 
 namespace fs = std::filesystem;
 
 typedef int (*RunLuaFileAsWin_t)(int argc, char** argv);
 
-// Resolve ~/Library/Application Support/PathOfBuildingMac. Prefers $HOME,
-// falls back to getpwuid(). Mirrors the pattern in SG's sys_main_c::
-// FindUserPath() so we don't drift from how the engine discovers the same
-// root. Returns an empty path on failure.
+// Resolve ~/Library/Application Support/<POB_APP_SUPPORT_DIR>. Prefers
+// $HOME, falls back to getpwuid(). Returns an empty path on failure.
 static fs::path GetAppSupportDir()
 {
     const char* home = std::getenv("HOME");
@@ -74,7 +75,7 @@ static fs::path GetAppSupportDir()
         if (!pw || !pw->pw_dir) return {};
         home = pw->pw_dir;
     }
-    return fs::path(home) / "Library/Application Support/PathOfBuildingMac";
+    return fs::path(home) / "Library/Application Support" / POB_APP_SUPPORT_DIR;
 }
 
 // Relocate the bundle's Contents/Resources/src tree into App Support so
