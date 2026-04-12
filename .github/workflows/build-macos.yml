@@ -1,34 +1,36 @@
 name: Build macOS
 
-# Runs on every push and pull request. Produces an ad-hoc-signed .dmg as an
-# artifact for smoke testing. This workflow INTENTIONALLY never reads any
-# repo secrets — that's the "build" side of the build/release split. Signed
-# Developer ID release builds live in a separate workflow that only fires
-# on mac-v* tag pushes and is gated on a GitHub Environment. Keeping the
-# split structural (two files, clean separation of concerns) means a
-# compromised PR or a mistake in this file cannot exfiltrate the signing
-# cert — it doesn't have it in scope at all.
-
 on:
   push:
   pull_request:
 
-# Minimal token scope. We don't push, we don't comment, we don't create
-# releases — just a read of the repo to check out code.
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build and ad-hoc sign
-    runs-on: macos-15   # Apple Silicon + Xcode 16 — our only target
-    timeout-minutes: 90 # first run will be slow (full vcpkg build)
+    name: ${{ matrix.name }}
+    runs-on: macos-15
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Path of Building
+            lua_tree: PathOfBuilding
+            version: "2.63.0"
+            bundle_name: "Path of Building"
+            bundle_id: ch.spidy.PathOfBuildingMac
+            app_support_dir: PathOfBuildingMac
+          - name: Path of Building - PoE2
+            lua_tree: PathOfBuilding-PoE2
+            version: "0.15.0"
+            bundle_name: "Path of Building - PoE2"
+            bundle_id: ch.spidy.PathOfBuildingMacPoE2
+            app_support_dir: PathOfBuildingMacPoE2
 
     env:
-      # Route vcpkg binary cache through GitHub Actions cache. First run
-      # populates the cache (slow: ~30-60 min to build ANGLE + LuaJIT +
-      # imaging deps from source). Subsequent runs reuse it and should be
-      # under 10 min.
       VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
     steps:
@@ -37,11 +39,6 @@ jobs:
         with:
           submodules: recursive
 
-      # vcpkg's x-gha binary cache provider reads ACTIONS_CACHE_URL and
-      # ACTIONS_RUNTIME_TOKEN from the environment. GitHub Actions sets
-      # them inside the runner but they're not exposed to child processes
-      # by default, so we export them explicitly here. (Standard dance
-      # documented in the vcpkg GitHub Actions integration guide.)
       - name: Export Actions Cache env vars for vcpkg
         uses: actions/github-script@v7
         with:
@@ -50,26 +47,32 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DPOB_LUA_TREE="${{ github.workspace }}/${{ matrix.lua_tree }}"
+          -DPOB_BUNDLE_VERSION="${{ matrix.version }}"
+          -DPOB_BUNDLE_NAME="${{ matrix.bundle_name }}"
+          -DPOB_BUNDLE_ID="${{ matrix.bundle_id }}"
+          -DPOB_APP_SUPPORT_DIR="${{ matrix.app_support_dir }}"
 
       - name: Build
         run: cmake --build build
 
-      - name: Install to staging dir
-        run: cmake --install build --prefix "${{ runner.temp }}/pob-install-wrapper"
+      - name: Install
+        run: cmake --install build --prefix "${{ runner.temp }}/stage"
 
       - name: Ad-hoc sign
-        run: macos/sign.sh "${{ runner.temp }}/pob-install-wrapper/Path of Building.app"
+        run: macos/sign.sh "${{ runner.temp }}/stage/${{ matrix.bundle_name }}.app"
 
       - name: Verify signature
-        run: codesign --verify --deep --strict --verbose=2 "${{ runner.temp }}/pob-install-wrapper/Path of Building.app"
+        run: codesign --verify --deep --strict --verbose=2 "${{ runner.temp }}/stage/${{ matrix.bundle_name }}.app"
 
       - name: Package DMG
-        run: macos/make-dmg.sh "${{ runner.temp }}/pob-install-wrapper/Path of Building.app" "${{ runner.temp }}/Path of Building.dmg"
+        run: macos/make-dmg.sh "${{ runner.temp }}/stage/${{ matrix.bundle_name }}.app" "${{ runner.temp }}/${{ matrix.bundle_name }}.dmg"
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pob-mac-${{ github.sha }}
-          path: ${{ runner.temp }}/Path of Building.dmg
+          name: ${{ matrix.bundle_name }}-${{ github.sha }}
+          path: ${{ runner.temp }}/${{ matrix.bundle_name }}.dmg
           if-no-files-found: error
