@@ -119,6 +119,27 @@ install(TARGETS PathOfBuilding
     RUNTIME DESTINATION "${POB_BIN_DEST}"
 )
 
+# The upstream vcpkg angle port produces dylibs named liblibEGL_angle.dylib
+# and liblibGLESv2_angle.dylib (double "lib" prefix + "_angle" suffix). Our
+# launcher and GLFW dlopen by the standard names (libEGL / libGLESv2), so we
+# rename, fix install names, and patch cross-references after install.
+install(CODE "
+    set(_bd \"\${CMAKE_INSTALL_PREFIX}/${POB_BIN_DEST}\")
+    if (EXISTS \"\${_bd}/liblibEGL_angle.dylib\")
+        file(RENAME \"\${_bd}/liblibEGL_angle.dylib\" \"\${_bd}/libEGL.dylib\")
+        execute_process(COMMAND install_name_tool -id @rpath/libEGL.dylib \"\${_bd}/libEGL.dylib\")
+    endif()
+    if (EXISTS \"\${_bd}/liblibGLESv2_angle.dylib\")
+        file(RENAME \"\${_bd}/liblibGLESv2_angle.dylib\" \"\${_bd}/libGLESv2.dylib\")
+        execute_process(COMMAND install_name_tool -id @rpath/libGLESv2.dylib \"\${_bd}/libGLESv2.dylib\")
+    endif()
+    file(GLOB _dylibs \"\${_bd}/*.dylib\")
+    foreach(_d IN LISTS _dylibs)
+        execute_process(COMMAND install_name_tool -change @rpath/liblibEGL_angle.dylib @rpath/libEGL.dylib \"\${_d}\" ERROR_QUIET)
+        execute_process(COMMAND install_name_tool -change @rpath/liblibGLESv2_angle.dylib @rpath/libGLESv2.dylib \"\${_d}\" ERROR_QUIET)
+    endforeach()
+")
+
 # ----- Bundle the PoB Lua tree -----
 if (EXISTS "${POB_LUA_TREE}/src/Launch.lua")
     install(DIRECTORY "${POB_LUA_TREE}/src"
