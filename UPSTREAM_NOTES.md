@@ -434,3 +434,22 @@ assert(dstData == dstDataStart + dst.size(dstLevel));
 ```
 
 **Scope:** 4 lines changed in one function. The transcoding output is byte-identical before and after — only the debug assertions are corrected. Zero risk to Release builds (assertions compile out). Zero risk to Windows (function is never called). Fixes Debug-mode crashes on any platform where BC7 isn't natively supported and BC7 DDS textures are present (currently: macOS + PoE2 tree data).
+
+## sys_main.cpp: `file_size()` on directories throws on macOS/Linux
+
+**File:** `engine/system/win/sys_main.cpp` (lines ~220, ~240 in `find_c::FindFirst` / `find_c::FindNext`)
+
+**Bug:** `NewFileSearch` iterates directory entries and unconditionally calls `iter->file_size()` on every match, including directories. Per the C++ standard, `std::filesystem::file_size()` on a non-regular-file has undefined behavior. MSVC silently returns 0 for directories. libc++ (macOS/Linux) throws `std::filesystem::filesystem_error`.
+
+Symptom: creating a "New Folder" in the PoB build list triggers `C++ exception: filesystem error: in file_size: Is a directory`.
+
+**Fix:** guard with the `isDirectory` flag that's already computed on the previous line:
+
+```cpp
+isDirectory = iter->is_directory();
+fileSize = isDirectory ? 0 : iter->file_size();
+```
+
+Two call sites (FindFirst and FindNext), same one-line change each.
+
+**Scope:** platform-agnostic correctness fix. MSVC happens to tolerate the UB, but relying on that is fragile. The fix is safe on all platforms and makes the behavior explicit.
