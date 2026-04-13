@@ -19,13 +19,15 @@ Unofficial macOS port of Path of Building, an offline build planner for Path of 
 
 You can download the latest version from the [releases page](https://github.com/stevschmid/PathOfBuilding-Mac/releases).
 
-* PathOfBuilding-Mac.dmg is the standalone app for Path of Building (Path of Exile 1).
-* PathOfBuilding-Mac-PoE2.dmg is the standalone app for Path of Building (Path of Exile 2).
+* `PathOfBuilding-Mac.dmg` is the standalone app for Path of Building (Path of Exile 1).
+* `PathOfBuilding-Mac-PoE2.dmg` is the standalone app for Path of Building (Path of Exile 2).
+
+Download, open the DMG, drag the app to your Applications folder, and launch it from there.
 
 ## Credits
 
-* PathOfBuildingCommunity for the outstanding work on the upstream project
-* PR #98 by @velomeister for the Linux port that helped kickstart this project
+* [PathOfBuildingCommunity](https://github.com/PathOfBuildingCommunity) for the outstanding work on the upstream project
+* [PR #98](https://github.com/PathOfBuildingCommunity/PathOfBuilding-SimpleGraphic/pull/98) by @velomeister for the Linux port that helped kickstart this project
 
 ## How to file issues
 
@@ -36,4 +38,4 @@ Please include what PathOfBuilding-Mac version you are using, plus your macOS ve
 
 [MIT](https://github.com/stevschmid/PathOfBuilding-Mac/blob/master/LICENSE)
 
-For 3rd-party licenses used by Path of Building, see [License.md](https://github.com/PathOfBuildingCommunity/PathOfBuilding/blob/dev/LICENSE.md).
+For 3rd-party licenses of Path of Building, see [License.md](https://github.com/PathOfBuildingCommunity/PathOfBuilding/blob/dev/LICENSE.md).
