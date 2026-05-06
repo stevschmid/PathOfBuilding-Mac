@@ -20,7 +20,7 @@ jobs:
         include:
           - name: Path of Building
             lua_tree: PathOfBuilding
-            version: "2.65.0"
+            version: "2.63.0"
             bundle_name: "Path of Building"
             bundle_id: ch.spidy.PathOfBuildingMac
             app_support_dir: PathOfBuildingMac
