@@ -298,6 +298,57 @@ We can't modify PoB Lua upstream, and we don't maintain a fork of the Lua repo. 
 
 Single PR against `PathOfBuildingCommunity/PathOfBuilding`. One-line change to `src/UpdateCheck.lua`. Safe on all platforms. Fixes a latent POSIX bug that was never exercised until macOS started shipping a bundle with a manifest. Zero SimpleGraphic changes required.
 
+## Launch.lua: error popups can't render before Modules/Common loads, hiding primary errors
+
+**File:** `src/Launch.lua` (lines 126/129/394 use `GetVirtualScreenSize`; defined at `src/Modules/Common.lua:968`)
+
+**Bug:** `Launch:DrawPopup` (line 393) and `Launch:OnFrame` (line 129) both call the global `GetVirtualScreenSize()`. That function is **not** an engine-bound primitive — it's defined in Lua at `src/Modules/Common.lua:968`. `Modules/Common` is the second `LoadModule` at the top of `Modules/Main.lua` (line 18). If anything errors *before* line 18 finishes — e.g. `LoadModule("GameVersions")` at line 17 fails because the file is missing/corrupt/quarantined, or a `require()` inside Common.lua errors before reaching line 968 — the cascade is:
+
+1. `Launch:OnInit` catches the error from `PLoadModule("Modules/Main")` (line 71-73) and calls `self:ShowErrMsg(...)`, setting `self.promptMsg`.
+2. The next frame, `OnFrame` (line 108) detects `promptMsg` and calls `self:DrawPopup(...)` at line 126.
+3. `DrawPopup` line 394 hits `local screenW, screenH = GetVirtualScreenSize()` → `attempt to call global 'GetVirtualScreenSize' (a nil value)`.
+4. The secondary error is unhandled. The engine shuts down. The user never sees the original error.
+
+End-user symptom: window flashes briefly and the app exits, with no visible error message and no clue what failed.
+
+**Reproducer:** prepend `error("test")` to line 1 of `src/Modules/Main.lua`. Stderr shows:
+
+```
+--- SCRIPT ERROR ---
+Runtime error in '...':
+Launch.lua:394: attempt to call global 'GetVirtualScreenSize' (a nil value)
+stack traceback:
+        Launch.lua:394: in function 'DrawPopup'
+        Launch.lua:126: in function <Launch.lua:108>
+```
+
+The synthetic `"test"` error never appears — completely masked by the secondary failure.
+
+**Why we hit it on macOS:** the macOS port surfaces this bug because (a) the launcher copies the Lua tree on first launch and any FS hiccup leaves a partial copy, (b) corporate AV/EDR can quarantine individual files inside the bundle, (c) edge-case FS configs (case-sensitive APFS, sync-managed `~/Library`) introduce more failure modes than a typical Windows install. Reported as our issue #1: user sees "creates a window, stalls forever" with no diagnostic. Windows installs are reliable enough that primary errors at Main.lua top-level are rare in practice, but the latent bug is the same on every platform.
+
+**Fix:** move `GetVirtualScreenSize`'s definition out of `Modules/Common.lua` and into `Launch.lua` itself, before `OnInit` runs. The function has no dependency on `common.*` state — it's just a wrapper around `GetScreenSize` + `GetScreenScale` — and it's already used by `Launch.lua` itself at three call sites, so it conceptually belongs alongside the other engine-glue helpers in `Launch.lua`. With the definition there, `DrawPopup` and `OnFrame` always have it available regardless of which modules loaded.
+
+```lua
+-- Add near the top of src/Launch.lua, before launch:OnInit
+function GetVirtualScreenSize()
+    local width, height = GetScreenSize()
+    local scale = GetScreenScale and GetScreenScale() or 1.0
+    if scale ~= 1.0 then
+        width = math.floor(width / scale)
+        height = math.floor(height / scale)
+    end
+    return width, height
+end
+```
+
+…and remove the duplicate definition from `src/Modules/Common.lua:968-976`.
+
+Alternatives that also work but are less clean:
+- Defensive guard at every call site: `local screenW, screenH = (GetVirtualScreenSize or GetScreenSize)()`. Requires touching all 5+ call sites and leaves the latent issue if a future call site is added without the guard.
+- Inline the screen-size logic directly into `DrawPopup`. Same maintenance burden as above; doesn't help `OnFrame:129`.
+
+**Scope:** ~10 lines moved between two upstream Lua files. Defensive change with no behavior delta on the happy path. Saves every future Mac/Linux/Windows user from an opaque silent shutdown when something fails during early `Modules/Main` load. Single PR against `PathOfBuildingCommunity/PathOfBuilding`. Zero SimpleGraphic changes required. As a side benefit, our `macos/mac_entry.lua` can drop its pre-bind workaround once upstream merges.
+
 ## SimpleGraphic writes its own config files to basePath instead of userPath
 
 **Files:**

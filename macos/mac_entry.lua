@@ -58,6 +58,25 @@
 -- manifest (local or remote). The upstream updater therefore never tracks,
 -- updates, or deletes it.
 
+-- Pre-bind GetVirtualScreenSize. Modules/Common.lua defines this on
+-- first load, but Launch.lua's DrawPopup calls it from OnFrame to
+-- position error popups. If anything errors during top-level
+-- Modules/Main loading BEFORE Common.lua runs (e.g. a failure in one
+-- of the LoadModule calls at the top of Main.lua), DrawPopup itself
+-- errors on the missing global and the engine shuts down with no
+-- visible message — masking the primary error. Pre-binding here
+-- matches Common.lua's semantics; it'll be overwritten when Common
+-- loads.
+function GetVirtualScreenSize()
+    local width, height = GetScreenSize()
+    local scale = GetScreenScale and GetScreenScale() or 1.0
+    if scale ~= 1.0 then
+        width = math.floor(width / scale)
+        height = math.floor(height / scale)
+    end
+    return width, height
+end
+
 local function filterPoBVersion(doc)
     if type(doc) ~= "table" or not doc[1] or doc[1].elem ~= "PoBVersion" then
         return doc
