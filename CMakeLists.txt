@@ -86,7 +86,7 @@ set(POB_RES_DEST "${POB_BUNDLE_NAME}.app/Contents/Resources"
 add_subdirectory(SimpleGraphic)
 
 # ----- Bundle target -----
-set(POB_BUNDLE_VERSION "2.63.0"
+set(POB_BUNDLE_VERSION "2.65.0"
     CACHE STRING "PoB version — drives Info.plist and the App Support refresh marker")
 
 set(POB_APPICON "${CMAKE_CURRENT_SOURCE_DIR}/macos/AppIcon.icns")
