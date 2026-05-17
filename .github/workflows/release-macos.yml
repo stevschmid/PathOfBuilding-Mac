@@ -63,6 +63,10 @@ jobs:
           rm "$CERT_FILE"
           echo "CODESIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
+      # Stop pkg-config from leaking Homebrew's openssl into the curl build.
+      - name: Isolate from Homebrew
+        run: echo "PKG_CONFIG_PATH=" >> $GITHUB_ENV
+
       - name: Configure
         run: >
           cmake -B build -DCMAKE_BUILD_TYPE=Release

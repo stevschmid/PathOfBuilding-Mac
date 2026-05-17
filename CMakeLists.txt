@@ -140,6 +140,24 @@ install(CODE "
     endforeach()
 ")
 
+# ----- CA bundle for libcurl TLS validation -----
+# Ship Mozilla's CA bundle (the standard cacert.pem from curl.se) so libcurl
+# can validate HTTPS certs without depending on Homebrew or the user's system
+# state. Cached in the build dir; refresh by deleting the file before
+# configuring.
+set(POB_CACERT "${CMAKE_BINARY_DIR}/cacert.pem")
+if (NOT EXISTS "${POB_CACERT}")
+    file(DOWNLOAD https://curl.se/ca/cacert.pem "${POB_CACERT}"
+        TLS_VERIFY ON
+        STATUS _cacert_dl_status
+        SHOW_PROGRESS)
+    list(GET _cacert_dl_status 0 _cacert_dl_code)
+    if (NOT _cacert_dl_code EQUAL 0)
+        message(FATAL_ERROR "Failed to download cacert.pem: ${_cacert_dl_status}")
+    endif()
+endif()
+install(FILES "${POB_CACERT}" DESTINATION "${POB_RES_DEST}")
+
 # ----- Bundle the PoB Lua tree -----
 if (EXISTS "${POB_LUA_TREE}/src/Launch.lua")
     install(DIRECTORY "${POB_LUA_TREE}/src"

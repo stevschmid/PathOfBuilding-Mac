@@ -286,6 +286,13 @@ int main(int argc, char** argv)
         // its own cfg files and imgui.ini away from basePath.
         setenv("POB_MAC_USER_DIR", appSupport->c_str(), 1);
 
+        // Point OpenSSL (libcurl's TLS backend) at the bundled Mozilla CA
+        // list. libcurl's OpenSSL backend calls SSL_CTX_set_default_verify_paths
+        // when no CAINFO is set on the easy handle, which honors SSL_CERT_FILE.
+        char caPath[PATH_MAX];
+        std::snprintf(caPath, sizeof(caPath), "%s/cacert.pem", bundleResourcesAbs);
+        setenv("SSL_CERT_FILE", caPath, 1);
+
         const fs::path appSrcPath = *appSupport / "src";
 
         // Prefer mac_entry.lua (the bootstrap that patches the in-app
