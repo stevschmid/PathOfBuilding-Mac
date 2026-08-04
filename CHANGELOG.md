@@ -1,5 +1,10 @@
 # Changelog
 
+## mac-v0.1.3 (2026-08-04)
+
+- Fix updater (thanks @ocombe)
+- Update bundled Path of Building to 2.66.2
+
 ## mac-v0.1.2 (2026-05-17)
 
 - Fix failure to boot on some machines due to missing dependency (OpenSSL)
