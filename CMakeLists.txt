@@ -168,6 +168,18 @@ if (EXISTS "${POB_LUA_TREE}/src/Launch.lua")
     install(DIRECTORY "${POB_LUA_TREE}/runtime/lua"
         DESTINATION "${POB_RES_DEST}"
     )
+    # Seed the same runtime Lua modules into src/lua as well. The macOS
+    # manifest filter (mac_entry.lua) re-keys upstream's runtime/lua entries
+    # to a pseudo part whose files live under the updater-writable src/lua/,
+    # so that's where the manifest expects them on disk. Without this seed,
+    # the first update check after a fresh install or bundle refresh flags
+    # every runtime Lua file as missing ("doesn't exist, will be
+    # re-downloaded") and presents a same-version update with an empty
+    # changelog. The Resources/lua copy above stays as the read-only
+    # LUA_PATH fallback.
+    install(DIRECTORY "${POB_LUA_TREE}/runtime/lua"
+        DESTINATION "${POB_RES_DEST}/src"
+    )
     install(DIRECTORY "${POB_LUA_TREE}/runtime/SimpleGraphic"
         DESTINATION "${POB_RES_DEST}"
         PATTERN "*.cfg" EXCLUDE
