@@ -43,13 +43,7 @@
 --   SimpleGraphic's MakeDir implementation. See UPSTREAM_NOTES.md at
 --   the wrapper repo root for the upstreamable bug report.
 --
--- Patch 3: renderer DPI mode
---   PoB 3.29+ calls RenderInit("DPI_AWARE"). On macOS with some external
---   display arrangements, SimpleGraphic can initialize with stale framebuffer
---   scale until the window is dragged across displays. Filtering the flag lets
---   SimpleGraphic use logical window coordinates consistently on macOS.
---
--- The updater patches need two installation points because UpdateCheck runs in
+-- Both patches need two installation points because UpdateCheck runs in
 -- two places:
 --   a. The first-run path (Launch.lua line ~37) calls LoadModule("UpdateCheck")
 --      in the main Lua state. We wrap LoadModule globally, read the file
@@ -81,18 +75,6 @@ function GetVirtualScreenSize()
         height = math.floor(height / scale)
     end
     return width, height
-end
-
-local rawRenderInit = RenderInit
-function RenderInit(...)
-    local filtered = {}
-    for i = 1, select("#", ...) do
-        local arg = select(i, ...)
-        if arg ~= "DPI_AWARE" then
-            filtered[#filtered + 1] = arg
-        end
-    end
-    return rawRenderInit(unpack(filtered))
 end
 
 local function filterPoBVersion(doc)

@@ -113,7 +113,6 @@ Every bundle-mode launch calls `RelocateRuntime(bundleSrc)`:
 3. **If marker matches**: no-op for `src/`. The extracted tree is up-to-date for this DMG, and any in-app updater state accumulated since is preserved.
 4. **If marker is missing or stale**: `fs::remove_all(appSrc)` then `fs::copy(bundleSrc, appSrc, fs::copy_options::recursive)`, then write the new marker. Logged to stderr as `RelocateRuntime: bundle version changed (marker=X, bundle=Y), refreshing …`.
 5. **Always** overwrite `PathOfBuildingMac/src/mac_entry.lua` from the bundle. It's our bootstrap file, PoB's updater never touches it (excluded from the manifest), and keeping it always-fresh lets dev iteration on `mac_entry.lua` take effect on next launch without needing a `POB_BUNDLE_VERSION` bump.
-6. The bundle opts out of a Retina backing surface (`NSHighResolutionCapable=false`), and `mac_entry.lua` filters PoB 3.29+'s `RenderInit("DPI_AWARE")` flag. SimpleGraphic's macOS/ANGLE path can otherwise initialize with a Retina drawable while the stored framebuffer size remains logical on some external displays, rendering PoB into the lower-left quadrant until the window is dragged across monitors.
 
 ### Why this shape
 
@@ -249,9 +248,8 @@ All documented in [UPSTREAM_NOTES.md](UPSTREAM_NOTES.md) with file/line/fix deta
 9. ANGLE `liblibEGL.dylib` double-lib-prefix on macOS.
 10. `UpdateCheck.lua` MakeDir POSIX-absolute-path loop bug — the hanging updater on first fresh install.
 11. SG config files (`SimpleGraphic.cfg` / `imgui.ini`) write to `basePath` instead of `userPath`.
-12. PoB 3.29 `DPI_AWARE` rendering can start with mismatched logical framebuffer dimensions on macOS external displays; the wrapper currently avoids that path by running non-Retina.
 
-All twelve are things that belong upstream — independent of our wrapper-specific Option B architecture.
+All eleven are things that belong upstream — independent of our wrapper-specific Option B architecture.
 
 ## Distribution pipeline — still pending
 
