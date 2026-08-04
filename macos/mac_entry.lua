@@ -12,10 +12,10 @@
 --   lcurl.dll, Path of Building.exe, etc. from raw.githubusercontent.com
 --   and crash on the runtime source URL lookup. We monkey-patch
 --   xml.LoadXMLFile and xml.ParseXML to strip win32-only file entries,
---   drop cross-platform part="runtime" files (which would otherwise
+--   drop non-Lua cross-platform part="runtime" files (which would otherwise
 --   trigger basic-mode updates that require an external Update helper
---   binary we don't ship), and re-key Windows-only source URLs to
---   platform="macos".
+--   binary we don't ship), and re-key runtime/lua files to a macOS-only
+--   pseudo part that updates into writable App Support.
 --
 -- Patch 2: UpdateCheck.lua MakeDir loop fix for POSIX absolute paths
 --   UpdateCheck.lua creates destination directories before downloading
@@ -83,41 +83,60 @@ local function filterPoBVersion(doc)
     end
     local root = doc[1]
     local filtered = { elem = "PoBVersion", attrib = root.attrib }
+    local function copyAttrib(attrib)
+        local copy = {}
+        for k, v in pairs(attrib or {}) do copy[k] = v end
+        return copy
+    end
+    local function isRuntimeLuaFile(node)
+        return node.elem == "File"
+            and node.attrib
+            and node.attrib.part == "runtime"
+            and type(node.attrib.name) == "string"
+            and node.attrib.name:match("^lua/.+%.lua$")
+    end
     for _, node in ipairs(root) do
         local keep = true
         if type(node) == "table" then
             if node.elem == "File" and node.attrib.runtime and node.attrib.runtime ~= "macos" then
                 -- Drop Windows-only binaries (.dll, .exe).
                 keep = false
+            elseif isRuntimeLuaFile(node) then
+                -- Runtime Lua modules are cross-platform source files. Track
+                -- them as a macOS pseudo part so they download from upstream's
+                -- runtime/ URL but install under writable App Support src/lua/.
+                local copy = { elem = "File", attrib = copyAttrib(node.attrib) }
+                copy.attrib.part = "runtime_lua"
+                table.insert(filtered, copy)
+                keep = false
+            elseif node.elem == "Source" and node.attrib.part == "runtime" then
+                -- Upstream exposes the runtime source with platform="win32"
+                -- because Windows is the only platform that updates the whole
+                -- runtime. On macOS we only use it for runtime/lua modules.
+                local copy = { elem = "Source", attrib = copyAttrib(node.attrib) }
+                copy.attrib.part = "runtime_lua"
+                copy.attrib.platform = "macos"
+                table.insert(filtered, copy)
+                keep = false
             elseif node.elem == "File" and node.attrib.part == "runtime" then
-                -- Cross-platform "runtime" file (e.g. lua/dkjson.lua, fonts
-                -- under SimpleGraphic/Fonts/). Upstream marks these
-                -- part="runtime" because they live in runtime/ in the PoB
-                -- Lua repo, but functionally they're regular data files.
-                -- We drop them from the manifest entirely on macOS for two
-                -- reasons:
+                -- Cross-platform non-Lua runtime files (fonts under
+                -- SimpleGraphic/Fonts/). Upstream marks these part="runtime"
+                -- because they live in runtime/ in the PoB Lua repo. We drop
+                -- them from the manifest entirely on macOS for two reasons:
                 --   1. UpdateCheck.lua flips updateMode to "basic" for ANY
                 --      part="runtime" file, which on macOS would call
                 --      SpawnProcess(runtimePath/Update, ...) — we don't
                 --      ship an Update helper binary, so basic-mode would
                 --      fail forever.
-                --   2. We can't simply re-categorize them as "program"
-                --      because that would route the download URL through
-                --      <repo>/master/src/ instead of <repo>/master/runtime/
-                --      and change the on-disk destination from Resources/
-                --      to Resources/src/.
                 -- They're shipped in the DMG, sit on disk, and get
                 -- refreshed only when a new DMG is released. These files
                 -- are extremely stable upstream (years between changes),
                 -- so this is acceptable.
                 keep = false
             elseif node.elem == "Source" and node.attrib.platform and node.attrib.platform ~= "macos" then
-                -- Re-key Windows-only source URLs to macos so the platform-keyed
-                -- partSources lookup in UpdateCheck.lua resolves. The cross-platform
-                -- files served from this URL (runtime/lua/*, runtime/SimpleGraphic/*)
-                -- live at the same upstream raw URL regardless of target platform.
-                local copy = { elem = "Source", attrib = {} }
-                for k, v in pairs(node.attrib) do copy.attrib[k] = v end
+                -- Re-key any remaining platform-specific sources to macos so
+                -- UpdateCheck.lua's platform-keyed partSources lookup resolves.
+                local copy = { elem = "Source", attrib = copyAttrib(node.attrib) }
                 copy.attrib.platform = "macos"
                 table.insert(filtered, copy)
                 keep = false
@@ -228,18 +247,40 @@ local function filterPoBVersion(doc)
     end
     local root = doc[1]
     local filtered = { elem = "PoBVersion", attrib = root.attrib }
+    local function copyAttrib(attrib)
+        local copy = {}
+        for k, v in pairs(attrib or {}) do copy[k] = v end
+        return copy
+    end
+    local function isRuntimeLuaFile(node)
+        return node.elem == "File"
+            and node.attrib
+            and node.attrib.part == "runtime"
+            and type(node.attrib.name) == "string"
+            and node.attrib.name:match("^lua/.+%.lua$")
+    end
     for _, node in ipairs(root) do
         local keep = true
         if type(node) == "table" then
             if node.elem == "File" and node.attrib.runtime and node.attrib.runtime ~= "macos" then
                 keep = false
+            elseif isRuntimeLuaFile(node) then
+                local copy = { elem = "File", attrib = copyAttrib(node.attrib) }
+                copy.attrib.part = "runtime_lua"
+                table.insert(filtered, copy)
+                keep = false
+            elseif node.elem == "Source" and node.attrib.part == "runtime" then
+                local copy = { elem = "Source", attrib = copyAttrib(node.attrib) }
+                copy.attrib.part = "runtime_lua"
+                copy.attrib.platform = "macos"
+                table.insert(filtered, copy)
+                keep = false
             elseif node.elem == "File" and node.attrib.part == "runtime" then
-                -- Drop cross-platform runtime files entirely. See main-state
-                -- filter above for why we don't re-categorize them.
+                -- Drop cross-platform non-Lua runtime files entirely. See
+                -- main-state filter above for the basic-mode constraint.
                 keep = false
             elseif node.elem == "Source" and node.attrib.platform and node.attrib.platform ~= "macos" then
-                local copy = { elem = "Source", attrib = {} }
-                for k, v in pairs(node.attrib) do copy.attrib[k] = v end
+                local copy = { elem = "Source", attrib = copyAttrib(node.attrib) }
                 copy.attrib.platform = "macos"
                 table.insert(filtered, copy)
                 keep = false

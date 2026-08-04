@@ -48,7 +48,7 @@ Path of Building.app/
 │   ├── Resources/
 │   │   ├── AppIcon.icns
 │   │   ├── SimpleGraphic/Fonts/            bitmap fonts
-│   │   ├── lua/                            runtime/lua from PoB (dkjson etc.)
+│   │   ├── lua/                            bundled runtime/lua fallback (dkjson etc.)
 │   │   └── src/                            bundled PoB Lua tree — "factory default"
 │   │       ├── Launch.lua                  upstream entry
 │   │       ├── mac_entry.lua               our bootstrap (not in any manifest)
@@ -75,6 +75,7 @@ Two App Support directories, deliberately separate:
 └── PathOfBuildingMac/                      our wrapper runtime state
     ├── .bundle_version                     refresh-detection marker (compared to compile-time constant)
     ├── src/                                relocated Lua tree — this is PoB's live working directory
+    │   ├── lua/                            updater-managed runtime/lua modules
     │   └── …                                updater writes here, cfg files resolve here
     ├── SimpleGraphic/
     │   ├── SimpleGraphic.cfg               SG's window state
@@ -98,7 +99,7 @@ What it does, in order:
 3. **Load `libSimpleGraphic.dylib`** from the same directory and `dlsym` the single export `RunLuaFileAsWin`.
 4. **Detect bundle vs. dev mode** by checking if `<exeDir>/../Resources/src/Launch.lua` exists. In bundle mode the launcher ignores argv entirely and auto-discovers paths; in dev mode argv[1] is a path to a Lua script and paths are derived relative to it (matches PR #98's `linux/launcher.c` pattern).
 5. **Relocate `src/` into App Support** (bundle mode only) — see next section.
-6. **Set environment variables** for SG: `SG_BASE_PATH` (always points at bundle `Contents/Resources` — fonts and runtime lua stay in the bundle as read-only data), `POB_MAC_USER_DIR` (points at `PathOfBuildingMac/`), `LUA_PATH`, `LUA_CPATH`.
+6. **Set environment variables** for SG: `SG_BASE_PATH` (always points at bundle `Contents/Resources` for fonts and bundled Lua fallbacks), `POB_MAC_USER_DIR` (points at `PathOfBuildingMac/`), `LUA_PATH`, `LUA_CPATH`. `LUA_PATH` searches `PathOfBuildingMac/src/lua` first so updater-managed runtime Lua modules can override the bundled fallback.
 7. **Call `RunLuaFileAsWin(1, { scriptPath, NULL })`** where `scriptPath` is `<AppSupport>/PathOfBuildingMac/src/mac_entry.lua`. SG then sets its internal `scriptPath` to the parent directory and everything downstream runs out of App Support.
 
 `CMAKE_CXX_STANDARD 17` is set at wrapper scope in the top-level `CMakeLists.txt` because `std::filesystem` and `std::optional` need it.
@@ -120,7 +121,7 @@ PoB on Windows writes updater-fetched Lua files directly into its install tree, 
 - `/Applications/Path of Building.app` is not user-writable without admin (the updater would `EACCES`)
 - A signed bundle's `_CodeSignature/CodeResources` seals everything inside `Contents/`; any write invalidates `codesign --verify --deep --strict`
 
-Option B splits the tree: the bundle ships a read-only "factory default" Lua tree, and `src/` lives for real at a user-writable App Support location that the updater can freely modify. The signed bundle is never touched after install.
+Option B splits the tree: the bundle ships a read-only "factory default" Lua tree plus runtime Lua fallback modules, and `src/` lives for real at a user-writable App Support location that the updater can freely modify. The macOS manifest filter rewrites upstream `runtime/lua/*.lua` entries into `src/lua/` updates so new Lua dependencies arrive with in-app updates, while native runtime files and fonts stay bundle-managed. The signed bundle is never touched after install.
 
 ### Version-bump scenario (validated end-to-end)
 

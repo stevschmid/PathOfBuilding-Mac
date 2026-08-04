@@ -304,14 +304,15 @@ int main(int argc, char** argv)
         strncpy(scriptAbs, scriptPath.c_str(), sizeof(scriptAbs));
         scriptAbs[sizeof(scriptAbs) - 1] = '\0';
 
-        // SG_BASE_PATH keeps pointing at the bundle's Contents/Resources —
-        // fonts and runtime/lua are read-only and don't need to move.
+        // SG_BASE_PATH keeps pointing at the bundle's Contents/Resources for
+        // fonts and bundled Lua-module fallbacks. Lua modules updated by PoB's
+        // in-app updater live under App Support src/lua and are searched first.
         strncpy(sgBasePath, bundleResourcesAbs, sizeof(sgBasePath));
         sgBasePath[sizeof(sgBasePath) - 1] = '\0';
 
         std::snprintf(luaPath, sizeof(luaPath),
-            "%s/lua/?.lua;%s/lua/?/init.lua;;",
-            bundleResourcesAbs, bundleResourcesAbs);
+            "%s/src/lua/?.lua;%s/src/lua/?/init.lua;%s/lua/?.lua;%s/lua/?/init.lua;;",
+            appSupport->c_str(), appSupport->c_str(), bundleResourcesAbs, bundleResourcesAbs);
     } else {
         // Dev: argv[1] is the Lua script path, derive everything from it.
         if (argc < 2) {
