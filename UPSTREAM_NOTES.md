@@ -5,7 +5,7 @@ Things discovered during the macOS port that should be sent back upstream once s
 ## luajit version bump: PR #98's pin is missing critical Apple Silicon JIT fix
 
 **Files:**
-- `vcpkg-ports/ports/luajit/2026-03-30_0/` (renamed from `2025-07-24_1/`)
+- `vcpkg-ports/ports/luajit/2026-07-20_1/` (renamed from `2025-07-24_1/` via `2026-03-30_0/`)
 - `vcpkg-ports/versions/l-/luajit.json`
 - `vcpkg-ports/versions/baseline.json`
 
@@ -37,9 +37,11 @@ We bumped the overlay port to LuaJIT commit `18b087cd2cd4ddc4a79782bf155383a689d
 
 **Scope:** this is the single most impactful fix we found. **It belongs upstream in PR #98 itself** as a version bump — both because PR #98 pinned an older LuaJIT and because PR #98's `LUAJIT_ENABLE_GC64` workaround is in the same family of fixes. The diff is small (commit hash + SHA512 + the rename + the conditional patch reorganization). No code changes to anything in `engine/`, `ui_*.cpp`, or anywhere else in SimpleGraphic.
 
+**Update (2026-08-31):** bumped again, `2026-03-30_0` → `2026-07-20_1`, to LuaJIT commit `2460b3ff93a1c955de3d62cfc825de7d68dc272e`. That picks up LuaJIT's backport of the v3.0 syntax extensions ([`a2ce8114f1`](https://github.com/LuaJIT/LuaJIT/commit/a2ce8114f1), compound assignment operators), which PoB scripts require as of ~2.67 — without it the app dies on startup with `Modules/Main.lua: '=' expected near '+'` once the in-app updater delivers a 2.67+ tree. Upstream SimpleGraphic made the identical bump in its `2026-07-20_1` port (same ref, same SHA512), so this note's version-bump ask is now satisfied on upstream master; only the surrounding cleanups (Windows-gated `msvcbuild.patch`, which we resynced to upstream's regenerated copy, plus the items below) remain locally. The mcode-trampoline fix is retained — it predates the new ref.
+
 ## luajit portfile: hardcoded `x64-linux-rel`/`x64-linux-dbg` build subdir
 
-**File:** `vcpkg-ports/ports/luajit/2026-03-30_0/portfile.cmake` (lines ~104–119)
+**File:** `vcpkg-ports/ports/luajit/2026-07-20_1/portfile.cmake` (lines ~104–119)
 
 **Bug:** PR #98's symlink fix (the `foreach(BUILDTYPE ...)` block that replaces the broken circular `bin/luajit -> luajit` symlink with the real binary from the build tree) hardcodes the build directory name to `x64-linux-rel` and `x64-linux-dbg`. On any other triplet (e.g. `arm64-osx`) the `EXISTS "${REAL_BIN}"` check is false, the `file(COPY)` never runs, and `vcpkg_copy_tools(TOOL_NAMES luajit ...)` then fails because `bin/luajit` is still the broken symlink the install step left behind:
 

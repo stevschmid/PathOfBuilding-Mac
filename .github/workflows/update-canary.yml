@@ -1,0 +1,92 @@
+# Daily end-to-end check that the PoB trees our users' apps will update to
+# still run on the runtime this wrapper ships. The in-app updater follows the
+# upstream `beta` branch (weekly snapshot of `dev`, promoted Fridays) for
+# users with beta opt-in, and `master` releases otherwise; testing dev+beta
+# gives up to a week's warning before a breaking change reaches users.
+#
+# Per game and branch it simulates the in-app update against the factory
+# tree (macos/ci/assemble_update.lua), compile-checks every delivered .lua
+# with the exact LuaJIT ref the wrapper pins (files the boot never touches
+# load lazily in-app, so a plain boot test would miss them), then boots PoB
+# headless and opens a build. See macos/ci/*.lua headers for details.
+
+name: Update canary
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  push:
+    paths:
+      - ".github/workflows/update-canary.yml"
+      - "macos/ci/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: ${{ matrix.game }} @ ${{ matrix.branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        game: [poe1, poe2]
+        branch: [beta, dev]
+        include:
+          - game: poe1
+            repo: PathOfBuildingCommunity/PathOfBuilding
+            factory: PathOfBuilding
+          - game: poe2
+            repo: PathOfBuildingCommunity/PathOfBuilding-PoE2
+            factory: PathOfBuilding-PoE2
+
+    steps:
+      - name: Checkout (top-level submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Fetch luautf8 sources
+        run: git -C SimpleGraphic submodule update --init --depth 1 libs/luautf8
+
+      - name: Build the LuaJIT the wrapper ships
+        run: |
+          port_dir=$(jq -r '.versions[0].path' SimpleGraphic/vcpkg-ports/versions/l-/luajit.json \
+            | sed 's|^\$|SimpleGraphic/vcpkg-ports|')
+          ref=$(grep -oE '\bREF [0-9a-f]{40}' "$port_dir/portfile.cmake" | awk '{print $2}')
+          echo "LuaJIT $ref (from $port_dir)"
+          git init -q luajit-src
+          git -C luajit-src fetch --quiet --depth 1 https://github.com/LuaJIT/LuaJIT "$ref"
+          git -C luajit-src checkout -q FETCH_HEAD
+          make -C luajit-src -j"$(nproc)" > /dev/null
+          echo "LUAJIT=$PWD/luajit-src/src/luajit" >> "$GITHUB_ENV"
+          echo "LUAJIT_INC=$PWD/luajit-src/src" >> "$GITHUB_ENV"
+
+      # The bundle ships lua-utf8.dylib next to the launcher; Modules/Common.lua
+      # requires it at load, so the headless boot needs the same module.
+      - name: Build lua-utf8
+        run: |
+          mkdir -p cmod
+          cc -O2 -fPIC -shared -include limits.h -I "$LUAJIT_INC" \
+            SimpleGraphic/libs/luautf8/lutf8lib.c -o cmod/lua-utf8.so
+
+      - name: Fetch upstream ${{ matrix.branch }}
+        run: git clone --quiet --depth 1 --branch "${{ matrix.branch }}" "https://github.com/${{ matrix.repo }}" upstream
+
+      - name: Assemble post-update tree
+        run: |
+          "$LUAJIT" macos/ci/assemble_update.lua "${{ matrix.factory }}" upstream work
+
+      - name: Parse sweep
+        run: |
+          "$LUAJIT" macos/ci/parse_sweep.lua work/src "${{ matrix.factory }}/runtime/lua"
+
+      - name: Headless boot + open build
+        run: |
+          export LUA_PATH="$PWD/work/src/lua/?.lua;$PWD/work/src/lua/?/init.lua;$PWD/${{ matrix.factory }}/runtime/lua/?.lua;$PWD/${{ matrix.factory }}/runtime/lua/?/init.lua;;"
+          export LUA_CPATH="$PWD/cmod/?.so;;"
+          cd work/src
+          env -u CI "$LUAJIT" "$GITHUB_WORKSPACE/macos/ci/headless_canary.lua" < /dev/null

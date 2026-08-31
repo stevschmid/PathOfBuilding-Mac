@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Update LuaJIT to the 2026-07-20 v2.1 head (matches upstream SimpleGraphic), adding the compound
+  assignment syntax (`+=` etc.) that Path of Building 2.67+ uses — fixes "Error loading main
+  script: Modules/Main.lua: '=' expected near '+'" after an in-app update
+
 ## mac-v0.1.3 (2026-08-04)
 
 - Fix updater (thanks @ocombe)
