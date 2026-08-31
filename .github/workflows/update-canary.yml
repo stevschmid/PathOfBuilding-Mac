@@ -76,6 +76,16 @@ jobs:
       - name: Fetch upstream ${{ matrix.branch }}
         run: git clone --quiet --depth 1 --branch "${{ matrix.branch }}" "https://github.com/${{ matrix.repo }}" upstream
 
+      # dev's in-tree manifest is only regenerated at beta promotion
+      # (upstream beta.yml runs update_manifest.py), so files added mid-week
+      # aren't listed yet and would look undelivered. Regenerate the same way
+      # so the dev legs test what Friday's beta will actually deliver. beta
+      # and master stay verbatim: users download those manifests as-is, and
+      # regenerating would mask a promotion that forgot to.
+      - name: Regenerate dev manifest
+        if: matrix.branch == 'dev'
+        run: cd upstream && python3 update_manifest.py --quiet --in-place
+
       - name: Assemble post-update tree
         run: |
           "$LUAJIT" macos/ci/assemble_update.lua "${{ matrix.factory }}" upstream work
