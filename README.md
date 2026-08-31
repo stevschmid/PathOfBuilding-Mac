@@ -8,7 +8,7 @@ Unofficial macOS port of Path of Building, an offline build planner for Path of 
 * Supports both PoE 1 and PoE 2
 * Native Apple Silicon (M1, M2 etc.) support
 * Uses same engine as Windows (SimpleGraphic), with Metal backend via ANGLE
-* Supports in-app updates (will update to latest version of the official PoB Lua core, i.e. passive tree etc.). No auto update of the app itself however.
+* Supports in-app updates (will update to latest version of the official PoB Lua core, i.e. passive tree etc.). The app itself is not auto-updated, but it notifies you when a new release is available.
 
 ## System requirements
 

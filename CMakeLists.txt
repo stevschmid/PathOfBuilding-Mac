@@ -89,6 +89,9 @@ add_subdirectory(SimpleGraphic)
 set(POB_BUNDLE_VERSION "2.66.2"
     CACHE STRING "PoB version — drives Info.plist and the App Support refresh marker")
 
+set(POB_MAC_VERSION "dev"
+    CACHE STRING "Wrapper release tag (mac-vX.Y.Z) — drives the in-app update notifier; \"dev\" disables it")
+
 set(POB_APPICON "${CMAKE_CURRENT_SOURCE_DIR}/macos/AppIcon.icns")
 set_source_files_properties(${POB_APPICON} PROPERTIES
     MACOSX_PACKAGE_LOCATION "Resources")
@@ -101,6 +104,7 @@ target_link_libraries(PathOfBuilding PRIVATE ${CMAKE_DL_LIBS})
 
 target_compile_definitions(PathOfBuilding PRIVATE
     POB_BUNDLE_VERSION_STRING="${POB_BUNDLE_VERSION}"
+    POB_MAC_VERSION_STRING="${POB_MAC_VERSION}"
     POB_APP_SUPPORT_DIR="${POB_APP_SUPPORT_DIR}"
 )
 

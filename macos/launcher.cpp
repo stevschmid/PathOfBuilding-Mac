@@ -60,6 +60,9 @@
 #ifndef POB_APP_SUPPORT_DIR
 #error "POB_APP_SUPPORT_DIR must be defined at compile time (set by CMake)"
 #endif
+#ifndef POB_MAC_VERSION_STRING
+#define POB_MAC_VERSION_STRING "dev"
+#endif
 
 namespace fs = std::filesystem;
 
@@ -357,6 +360,11 @@ int main(int argc, char** argv)
     // ----- Push env vars and hand off to SimpleGraphic -----
     if (!getenv("SG_BASE_PATH"))
         setenv("SG_BASE_PATH", sgBasePath, 1);
+
+    // Wrapper release tag for mac_entry.lua's update notifier ("dev" on
+    // local builds, which disables the check).
+    if (!getenv("POB_MAC_VERSION"))
+        setenv("POB_MAC_VERSION", POB_MAC_VERSION_STRING, 1);
 
     // Work around pob-wide-crt.patch: _lua_getenvcopy() calls
     // strdup(getenv(name)) which crashes on NULL, so we always set these

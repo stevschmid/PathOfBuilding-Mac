@@ -72,6 +72,7 @@ jobs:
           cmake -B build -DCMAKE_BUILD_TYPE=Release
           -DPOB_LUA_TREE="${{ github.workspace }}/${{ matrix.lua_tree }}"
           -DPOB_BUNDLE_VERSION="${{ matrix.version }}"
+          -DPOB_MAC_VERSION="${{ github.ref_name }}"
           -DPOB_BUNDLE_NAME="${{ matrix.bundle_name }}"
           -DPOB_BUNDLE_ID="${{ matrix.bundle_id }}"
           -DPOB_APP_SUPPORT_DIR="${{ matrix.app_support_dir }}"

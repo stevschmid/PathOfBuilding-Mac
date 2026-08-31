@@ -320,3 +320,85 @@ end
 -- launcher → sys_main → SetWorkDir from our entry script's path), so a
 -- relative dofile resolves correctly.
 dofile("Launch.lua")
+
+-- Mac app update notifier.
+--
+-- The updater patched above manages only the Lua tree; the native bundle
+-- (launcher, SimpleGraphic, LuaJIT) changes only via a new DMG release.
+-- When upstream starts requiring a newer runtime, a stale bundle fails
+-- with an opaque Lua error right after a tree update — so once per launch,
+-- ask GitHub for the newest wrapper release and offer the download.
+-- Notification only; nothing is installed automatically.
+--
+-- The running version comes from the POB_MAC_VERSION env var (the release
+-- tag, baked in by the launcher at build time). Local builds carry "dev",
+-- which disables the check. "Skip This Version" is remembered per tag in a
+-- small prefs file in the wrapper's App Support dir; Cancel asks again on
+-- the next launch. There is no global opt-out.
+do
+    local function parseVersion(tag)
+        local major, minor, patch = tostring(tag):match("^mac%-v(%d+)%.(%d+)%.(%d+)$")
+        if not major then return nil end
+        return tonumber(major) * 1000000 + tonumber(minor) * 1000 + tonumber(patch)
+    end
+
+    local current = parseVersion(os.getenv("POB_MAC_VERSION"))
+    if not current then
+        return
+    end
+
+    local userDir = os.getenv("POB_MAC_USER_DIR")
+    local prefsPath = userDir and (userDir .. "/update_prefs")
+
+    local function skippedVersion()
+        local f = prefsPath and io.open(prefsPath, "r")
+        if not f then return nil end
+        local text = f:read("*a")
+        f:close()
+        return text:match("skipped_version=([^\n]+)")
+    end
+
+    local function onCheckResult(response, errMsg)
+        if errMsg or type(response) ~= "table" or type(response.body) ~= "string" then
+            return
+        end
+        local ok, data = pcall(function()
+            return require("dkjson").decode(response.body)
+        end)
+        if not ok or type(data) ~= "table" then return end
+        local tag = data.tag_name
+        local latest = parseVersion(tag)
+        if not latest or latest <= current then return end
+        if tag == skippedVersion() then return end
+        ConPrintf("Mac app update available: %s (running %s)", tag, os.getenv("POB_MAC_VERSION"))
+        if not (main and main.OpenConfirmPopup) then return end
+        main:OpenConfirmPopup("Update Available",
+            "A new version of Path of Building for Mac is available: ^7" .. tag .. "\n" ..
+            "\n" ..
+            "Install it to keep game data updates working.",
+            "Open Download Page",
+            function()
+                OpenURL("https://github.com/stevschmid/PathOfBuilding-Mac/releases/latest")
+            end,
+            "Skip This Version",
+            function()
+                local f = prefsPath and io.open(prefsPath, "w")
+                if f then
+                    f:write("skipped_version=", tag, "\n")
+                    f:close()
+                end
+            end)
+    end
+
+    local origOnInit = launch.OnInit
+    launch.OnInit = function(self, ...)
+        origOnInit(self, ...)
+        pcall(function()
+            self:DownloadPage(
+                "https://api.github.com/repos/stevschmid/PathOfBuilding-Mac/releases/latest",
+                function(...)
+                    pcall(onCheckResult, ...)
+                end)
+        end)
+    end
+end
