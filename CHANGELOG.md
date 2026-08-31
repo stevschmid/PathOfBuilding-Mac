@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## mac-v0.1.4 (2026-08-31)
 
 - Update LuaJIT to the 2026-07-20 v2.1 head (matches upstream SimpleGraphic), adding the compound
   assignment syntax (`+=` etc.) that Path of Building 2.67+ uses — fixes "Error loading main
