@@ -61,7 +61,7 @@ endif()
 #
 #   cmake -B build-poe2 \
 #       -DPOB_LUA_TREE=PathOfBuilding-PoE2 \
-#       -DPOB_BUNDLE_VERSION=0.15.0 \
+#       -DPOB_BUNDLE_VERSION=0.23.1 \
 #       -DPOB_BUNDLE_NAME="Path of Building - PoE2" \
 #       -DPOB_BUNDLE_ID=ch.spidy.PathOfBuildingMacPoE2 \
 #       -DPOB_APP_SUPPORT_DIR=PathOfBuildingMacPoE2

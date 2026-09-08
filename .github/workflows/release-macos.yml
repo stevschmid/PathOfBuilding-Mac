@@ -27,7 +27,7 @@ jobs:
             dmg_name: PathOfBuilding-Mac
           - name: Path of Building - PoE2
             lua_tree: PathOfBuilding-PoE2
-            version: "0.15.0"
+            version: "0.23.1"
             bundle_name: "Path of Building - PoE2"
             bundle_id: ch.spidy.PathOfBuildingMacPoE2
             app_support_dir: PathOfBuildingMacPoE2
